@@ -71,6 +71,8 @@ int main()
         philosophersThreads.emplace_back(runPhilosLife, i);
     }
 
+    chopsticksMutexes = std::vector<std::mutex>(numberOfPhilosophers);
+
     // wait for them to end
     for (auto &philosopher : philosophersThreads)
     {
