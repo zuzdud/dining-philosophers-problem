@@ -56,7 +56,7 @@ void think(const int philosopherId)
     }
 }
 
-// func that will be run by each thread
+// func that will be run by each philosopher thread
 void philosopherRoutine(const int philosopherId)
 {
 
@@ -102,6 +102,8 @@ int main()
     std::cout << "Dining Philosophers Problem lets gooo" << std::endl
               << std::endl;
 
+    std::cout << "\nPress SPACE to end simulation" << std::endl;
+    
     // ensure that there are at least two philosophers
     while (numberOfPhilosophers < 2)
     {
