@@ -78,8 +78,11 @@ int main()
 {
     std::cout << "Dining Philosophers Problem lets gooo" << std::endl
               << std::endl;
-    std::cout << "How many philosophers are at the table?" << std::endl;
-    std::cin >> numberOfPhilosophers;
+    while (numberOfPhilosophers < 2)
+    {
+        std::cout << "How many philosophers are at the table? (at least two)" << std::endl;
+        std::cin >> numberOfPhilosophers;
+    }
 
     // create threads
     for (int i = 0; i < numberOfPhilosophers; i++)
