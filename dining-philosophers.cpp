@@ -5,8 +5,8 @@
 #include <mutex>
 #include <random>
 
-// vector for storing philosophers threads
-std::vector<std::thread> philosophersThreads;
+int numberOfPhilosophers;
+std::vector<std::thread> philosophersThreads; // vector for storing philosophers threads
 std::vector<std::mutex> chopsticksMutexes;
 std::mutex consolePrintingMutex;
 
@@ -15,9 +15,14 @@ std::uniform_int_distribution<int> thinkingTime{500, 2000};
 std::uniform_int_distribution<int> eatingTime{300, 1000};
 
 
-void eat(const int philosopherId)
+void eat(const int philosopherId, const int leftChopstick, const int rightChopstick)
 {
     int currentEatingTime = eatingTime(rng);
+
+    chopsticksMutexes[leftChopstick].lock();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    chopsticksMutexes[rightChopstick].lock();
+
     {
         std::unique_lock<std::mutex> lock(consolePrintingMutex);
         std::cout << "Philosopher " << philosopherId << " will be eating for " << currentEatingTime << "ms" << std::endl;
@@ -29,6 +34,8 @@ void eat(const int philosopherId)
         std::unique_lock<std::mutex> lock(consolePrintingMutex);
         std::cout << "Philosopher " << philosopherId << " stopped eating..." << std::endl;
     }
+    chopsticksMutexes[leftChopstick].unlock();
+    chopsticksMutexes[rightChopstick].unlock();
 }
 
 void think(const int philosopherId)
@@ -50,16 +57,25 @@ void think(const int philosopherId)
 // func that will be run by each thread
 void runPhilosLife(const int philosopherId)
 {
+    int leftChopstick, rightChopstick;
+
+    if(philosopherId%2==0){
+        leftChopstick = philosopherId;
+        rightChopstick = (philosopherId + 1) % numberOfPhilosophers;
+    } else{
+        leftChopstick = (philosopherId + 1) % numberOfPhilosophers;
+        rightChopstick = philosopherId;
+    }
+
     while (true)
     {
         think(philosopherId);
-        eat(philosopherId);
+        eat(philosopherId, leftChopstick, rightChopstick);
     }
 }
 
 int main()
 {
-    int numberOfPhilosophers;
     std::cout << "Dining Philosophers Problem lets gooo" << std::endl
               << std::endl;
     std::cout << "How many philosophers are at the table?" << std::endl;
