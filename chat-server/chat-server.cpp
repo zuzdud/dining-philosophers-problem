@@ -3,15 +3,50 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <mutex>
+#include <string>
+#include <thread>
 
 #pragma comment(lib, "Ws2_32.lib")
 
 #define PORT 12345 // server port
+#define BUFFER_SIZE 1024
 
-std::vector<int> clients; // list of clients sockets
-std::mutex clientsMutex; // mutex for client list
+std::vector<std::pair<int, int>> clients; // list of clients sockets
+std::mutex clientsMutex;                  // mutex for client list
 
-void handleClient(int clientSocket);
+void broadcastMessage(std::string message, int clientSocket);
+
+void handleClient(int clientSocket, int clientId)
+{
+    char messageBuffer[BUFFER_SIZE];
+
+    std::string welcomeMessage = "Well, hello there!\n";
+
+    // to client socket send welcome message
+    send(clientSocket, welcomeMessage.c_str(), welcomeMessage.length(), 0);
+
+    while (true)
+    {
+        int bytes_received = recv(clientSocket, messageBuffer, BUFFER_SIZE - 1, 0);
+        if (bytes_received <= 0)
+        {
+            std::cerr << "Client disconnected\n";
+            break;
+        }
+        messageBuffer[bytes_received] = '\0';
+        std::string message = "Client " + std::to_string(clientSocket) + ": " + messageBuffer;
+        std::cout << message;
+    }
+
+    // remove client on disconnect
+    {
+        // lock clients vector mutex
+        std::lock_guard<std::mutex> lock(clientsMutex);
+        clients.erase(clients.begin() + clientId);
+    }
+    closesocket(clientSocket);
+    std::cout << "Client disconnected\n";
+}
 
 int main()
 {
@@ -46,17 +81,18 @@ int main()
         int clientSocket = accept(serverSocket, (sockaddr *)&clientAddr, &clientSize);
 
         std::cout << "New client connected: " << clientSocket << std::endl;
-
+        int clientId = clients.size();
         {
-            // lock client vector to eliminate race condition 
+            // lock client vector to eliminate race condition
             std::lock_guard<std::mutex> lock(clientsMutex);
+
             // add client socket to vector
-            clients.push_back(clientSocket);
+            clients.push_back(std::make_pair(clientSocket, clientId));
         }
 
         // new thread for client
-        std::thread t(handleClient, clientSocket);
-        t.detach();  // detach thread to handle client independently 
+        std::thread t(handleClient, clientSocket, clientId);
+        t.detach(); // detach thread to handle client independently of this loop
     }
 
     closesocket(serverSocket);
