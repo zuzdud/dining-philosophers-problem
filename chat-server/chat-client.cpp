@@ -9,6 +9,22 @@
 #define PORT 12345
 #define BUFFER_SIZE 1024
 
+void receiveMessages(int sockfd)
+{
+    char messageBuffer[BUFFER_SIZE];
+    while (true)
+    {
+        int bytes_received = recv(sockfd, messageBuffer, BUFFER_SIZE - 1, 0);
+        if (bytes_received <= 0)
+        {
+            std::cout << "Disconnected from server.\n";
+            break;
+        }
+        messageBuffer[bytes_received] = '\0';
+        std::cout << messageBuffer;
+    }
+}
+
 int main()
 {
 
@@ -30,6 +46,19 @@ int main()
 
     std::cout << "Connected to server.\n";
 
+    std::thread recvThread(receiveMessages, sock);
+    recvThread.detach();
+
+    std::string input;
+    while (true)
+    {
+        std::getline(std::cin, input);
+        if (input == "/quit")
+            break;
+        send(sock, input.c_str(), input.length(), 0);
+    }
+
+    closesocket(sock);
     WSACleanup();
     return 0;
 }
