@@ -2,10 +2,16 @@
 #include <vector>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#include <mutex>
 
 #pragma comment(lib, "Ws2_32.lib")
 
 #define PORT 12345 // server port
+
+std::vector<int> clients; // list of clients sockets
+std::mutex clientsMutex; // mutex for client list
+
+void handleClient(int clientSocket);
 
 int main()
 {
@@ -19,27 +25,38 @@ int main()
     // create socket, AF_INET is IPv4, SOCK_STREAM is TCP, 0 default protocol for TCP
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
 
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET; // IPv4
-    server_addr.sin_port = htons(PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY; // accept connections from any IP
+    sockaddr_in serverAddr{};
+    serverAddr.sin_family = AF_INET; // IPv4
+    serverAddr.sin_port = htons(PORT);
+    serverAddr.sin_addr.s_addr = INADDR_ANY; // accept connections from any IP
 
     // bind ip addres and port to server socket
-    bind(serverSocket, (sockaddr *)&server_addr, sizeof(server_addr));
+    bind(serverSocket, (sockaddr *)&serverAddr, sizeof(serverAddr));
 
     // listen on this port
     // max 10 connections
     listen(serverSocket, 10);
 
-    std::cout << "Server started on port " << PORT << "\n";
+    std::cout << "Server started on port " << PORT << std::endl;
 
     while (true)
     {
-        sockaddr_in client_addr{};
-        socklen_t client_size = sizeof(client_addr);
-        int client_socket = accept(serverSocket, (sockaddr *)&client_addr, &client_size);
+        sockaddr_in clientAddr{};
+        socklen_t clientSize = sizeof(clientAddr);
+        int clientSocket = accept(serverSocket, (sockaddr *)&clientAddr, &clientSize);
 
-        std::cout << "New client connected: " << client_socket << "\n";
+        std::cout << "New client connected: " << clientSocket << std::endl;
+
+        {
+            // lock client vector to eliminate race condition 
+            std::lock_guard<std::mutex> lock(clientsMutex);
+            // add client socket to vector
+            clients.push_back(clientSocket);
+        }
+
+        // new thread for client
+        std::thread t(handleClient, clientSocket);
+        t.detach();  // detach thread to handle client independently 
     }
 
     closesocket(serverSocket);
