@@ -4,6 +4,7 @@
 #include <WS2tcpip.h>
 #include <mutex>
 #include <string>
+#include <algorithm>
 #include <thread>
 
 #pragma comment(lib, "Ws2_32.lib")
@@ -50,7 +51,7 @@ void handleClient(int clientSocket)
             break;
         }
         messageBuffer[bytes_received] = '\0';
-        std::string message = "Client " + std::to_string(clientSocket) + ": " + messageBuffer;
+        std::string message = "Client " + std::to_string(clientSocket) + ": " + messageBuffer + "\n";
         std::cout << message;
         broadcastMessage(message, clientSocket);
     }
@@ -59,7 +60,11 @@ void handleClient(int clientSocket)
     {
         // lock clients vector mutex
         std::lock_guard<std::mutex> lock(clientsMutex);
-        clients.erase(clients.begin() + clientId);
+        auto it = std::find(clients.begin(), clients.end(), clientSocket);
+        if (it != clients.end())
+        {
+            clients.erase(it);
+        }
     }
     closesocket(clientSocket);
     std::cout << "Client disconnected\n";
@@ -87,22 +92,37 @@ int main()
 
     // WinSock lib initialization, version 2.2, data in wsaData
     WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+    {
+        std::cerr << "WSAStartup failed.\n";
+        return 1;
+    }
     // create socket, AF_INET is IPv4, SOCK_STREAM is TCP, 0 default protocol for TCP
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-
+    if (serverSocket == INVALID_SOCKET)
+    {
+        std::cerr << "Socket creation failed.\n";
+        return 1;
+    }
     sockaddr_in serverAddr{};
     serverAddr.sin_family = AF_INET; // IPv4
     serverAddr.sin_port = htons(PORT);
     serverAddr.sin_addr.s_addr = INADDR_ANY; // accept connections from any IP
 
     // bind ip addres and port to server socket
-    bind(serverSocket, (sockaddr *)&serverAddr, sizeof(serverAddr));
+    if (bind(serverSocket, (sockaddr *)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR)
+    {
+        std::cerr << "Bind failed with error: " << WSAGetLastError() << "\n";
+        return 1;
+    }
 
     // listen on this port
     // max 10 connections
-    listen(serverSocket, 10);
+    if (listen(serverSocket, 10) == SOCKET_ERROR)
+    {
+        std::cerr << "Listen failed with error: " << WSAGetLastError() << "\n";
+        return 1;
+    }
 
     std::cout << "Server started on port " << PORT << std::endl;
 
@@ -113,19 +133,24 @@ int main()
         sockaddr_in clientAddr{};
         socklen_t clientSize = sizeof(clientAddr);
         int clientSocket = accept(serverSocket, (sockaddr *)&clientAddr, &clientSize);
-
+        if (clientSocket == INVALID_SOCKET)
+        {
+            std::cerr << "Accept failed: " << WSAGetLastError() << "\n";
+            DWORD timeout = 2000; // 2 seconds
+            setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+            continue;
+        }
         std::cout << "New client connected: " << clientSocket << std::endl;
-        int clientId = clients.size();
         {
             // lock client vector to eliminate race condition
             std::lock_guard<std::mutex> lock(clientsMutex);
 
             // add client socket to vector
-            clients.push_back(std::make_pair(clientSocket, clientId));
+            clients.push_back(clientSocket);
         }
 
         // new thread for client
-        std::thread t(handleClient, clientSocket, clientId);
+        std::thread t(handleClient, clientSocket);
         t.detach(); // detach thread to handle client independently of this loop
     }
 
