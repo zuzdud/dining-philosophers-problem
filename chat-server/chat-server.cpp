@@ -11,10 +11,10 @@
 #define PORT 12345 // server port
 #define BUFFER_SIZE 1024
 
-std::vector<std::pair<int, int>> clients; // list of clients sockets
-std::mutex clientsMutex;                  // mutex for client list
+bool isRunning = true;
 
-void broadcastMessage(std::string message, int clientSocket);
+std::vector<int> clients; // list of clients sockets
+std::mutex clientsMutex;  // mutex for client list
 
 void broadcastMessage(std::string message, int clientSocket)
 {
@@ -39,12 +39,14 @@ void handleClient(int clientSocket)
     // to client socket send welcome message
     send(clientSocket, welcomeMessage.c_str(), welcomeMessage.length(), 0);
 
-    while (true)
+    while (isRunning)
     {
         int bytes_received = recv(clientSocket, messageBuffer, BUFFER_SIZE - 1, 0);
         if (bytes_received <= 0)
         {
-            std::cerr << "Client disconnected\n";
+            int err = WSAGetLastError();
+            if (err == WSAETIMEDOUT)
+                continue; // timeout, check isRunning again
             break;
         }
         messageBuffer[bytes_received] = '\0';
@@ -61,6 +63,21 @@ void handleClient(int clientSocket)
     }
     closesocket(clientSocket);
     std::cout << "Client disconnected\n";
+}
+
+void listenForCommands()
+{
+    std::string input;
+    while (isRunning)
+    {
+        std::getline(std::cin, input);
+        if (input == "/shutdown")
+        {
+            std::cout << "Shutting down server..." << std::endl;
+            isRunning = false;
+            break;
+        }
+    }
 }
 
 int main()
@@ -89,7 +106,9 @@ int main()
 
     std::cout << "Server started on port " << PORT << std::endl;
 
-    while (true)
+    std::thread commandsThread(listenForCommands);
+
+    while (isRunning)
     {
         sockaddr_in clientAddr{};
         socklen_t clientSize = sizeof(clientAddr);
@@ -108,6 +127,19 @@ int main()
         // new thread for client
         std::thread t(handleClient, clientSocket, clientId);
         t.detach(); // detach thread to handle client independently of this loop
+    }
+
+    commandsThread.join();
+    std::cout << "Command thread finished. Closing all connections..." << std::endl;
+
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+        for (int clientSocket : clients)
+        {
+            shutdown(clientSocket, SD_BOTH);
+            closesocket(clientSocket);
+        }
+        clients.clear();
     }
 
     closesocket(serverSocket);
