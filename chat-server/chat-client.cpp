@@ -9,15 +9,18 @@
 #define PORT 12345
 #define BUFFER_SIZE 1024
 
+bool isRunning = true;
+
 void receiveMessages(int sockfd)
 {
     char messageBuffer[BUFFER_SIZE];
-    while (true)
+    while (isRunning)
     {
         int bytes_received = recv(sockfd, messageBuffer, BUFFER_SIZE - 1, 0);
         if (bytes_received <= 0)
         {
             std::cout << "Disconnected from server.\n";
+            isRunning = false;
             break;
         }
         messageBuffer[bytes_received] = '\0';
@@ -50,7 +53,7 @@ int main()
     recvThread.detach();
 
     std::string input;
-    while (true)
+    while (isRunning)
     {
         std::getline(std::cin, input);
         if (input == "/quit")
