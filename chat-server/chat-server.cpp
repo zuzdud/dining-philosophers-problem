@@ -16,7 +16,21 @@ std::mutex clientsMutex;                  // mutex for client list
 
 void broadcastMessage(std::string message, int clientSocket);
 
-void handleClient(int clientSocket, int clientId)
+void broadcastMessage(std::string message, int clientSocket)
+{
+    std::lock_guard<std::mutex> lock(clientsMutex);
+    for (int client_fd : clients)
+    {
+        if (client_fd != clientSocket)
+        {
+            if (send(client_fd, message.c_str(), message.size(), 0) == SOCKET_ERROR)
+            {
+                std::cerr << "Failed to send message to client " << client_fd << "\n";
+            }
+        }
+    }
+}
+void handleClient(int clientSocket)
 {
     char messageBuffer[BUFFER_SIZE];
 
@@ -36,6 +50,7 @@ void handleClient(int clientSocket, int clientId)
         messageBuffer[bytes_received] = '\0';
         std::string message = "Client " + std::to_string(clientSocket) + ": " + messageBuffer;
         std::cout << message;
+        broadcastMessage(message, clientSocket);
     }
 
     // remove client on disconnect
