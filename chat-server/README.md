@@ -22,6 +22,7 @@ The server must ensure:
 **Server Side**
 1. **Client Threads** – Each client is handled in its own thread for concurrent message handling.
 2. **Command Listener Thread** – Listens for server-side input (e.g., `/shutdown`) to stop the server and notify all clients.
+
 **Client Side**
 1. **Receive Thread** – Continuously receives messages from the server (`receiveMessages`) and displays them to the user.
 2. **Input Thread** – Captures user input (`inputThreadFunc`) and sends it to the server. Also handles the `/quit` command to disconnect gracefully.
