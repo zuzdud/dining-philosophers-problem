@@ -6,13 +6,14 @@
 #include <string>
 #include <algorithm>
 #include <thread>
+#include <atomic>
 
 #pragma comment(lib, "Ws2_32.lib")
 
 #define PORT 12345 // server port
 #define BUFFER_SIZE 1024
 
-bool isRunning = true;
+std::atomic<bool> isRunning(true);
 
 std::vector<int> clients; // list of clients sockets
 std::vector<std::thread> clientThreads;
@@ -65,6 +66,7 @@ void handleClient(int clientSocket)
     }
     closesocket(clientSocket);
     std::cout << "Client " << std::to_string(clientSocket) << " disconnected\n";
+    broadcastMessage("Client " + std::to_string(clientSocket) + " disconnected\n", -1);
 }
 
 void closeAllClients()
@@ -88,7 +90,7 @@ void listenForCommands(int serverSocket)
         {
             std::cout << "Shutting down server..." << std::endl;
             isRunning = false;
-            broadcastMessage("SERVER: shutting down\n", PORT);
+            broadcastMessage("SERVER: shutting down\n", -1);
             closesocket(serverSocket);
             closeAllClients();
 

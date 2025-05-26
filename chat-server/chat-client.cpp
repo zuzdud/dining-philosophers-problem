@@ -31,10 +31,8 @@ void receiveMessages(int sockfd)
         if (msg == "SERVER: shutting down\n")
         {
             isRunning = false;
-
             shutdown(sockfd, SD_BOTH);
             closesocket(sockfd);
-            std::cin.putback('\n');
             break;
         }
     }
