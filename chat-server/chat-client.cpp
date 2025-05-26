@@ -3,6 +3,7 @@
 #include <string>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#include <conio.h>
 
 #pragma comment(lib, "Ws2_32.lib")
 
@@ -25,6 +26,38 @@ void receiveMessages(int sockfd)
         }
         messageBuffer[bytes_received] = '\0';
         std::cout << messageBuffer;
+        std::string msg(messageBuffer);
+
+        if (msg == "SERVER: shutting down\n")
+        {
+            isRunning = false;
+
+            shutdown(sockfd, SD_BOTH);
+            closesocket(sockfd);
+            std::cin.putback('\n');
+            break;
+        }
+    }
+}
+
+void inputThreadFunc(int sock)
+{
+    std::string input;
+    while (isRunning)
+    {
+        if (!std::getline(std::cin, input))
+        {
+            isRunning = false;
+            break;
+        }
+        if (input == "/quit")
+        {
+            isRunning = false;
+            shutdown(sock, SD_BOTH);
+            closesocket(sock);
+            break;
+        }
+        send(sock, input.c_str(), static_cast<int>(input.length()), 0);
     }
 }
 
@@ -50,16 +83,17 @@ int main()
     std::cout << "Connected to server.\n";
 
     std::thread recvThread(receiveMessages, sock);
-    recvThread.detach();
+    std::thread inputThread(inputThreadFunc, sock);
 
-    std::string input;
     while (isRunning)
     {
-        std::getline(std::cin, input);
-        if (input == "/quit")
-            break;
-        send(sock, input.c_str(), input.length(), 0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    if (recvThread.joinable())
+        recvThread.join();
+    if (inputThread.joinable())
+        inputThread.join();
 
     closesocket(sock);
     WSACleanup();

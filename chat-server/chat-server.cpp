@@ -15,7 +15,8 @@
 bool isRunning = true;
 
 std::vector<int> clients; // list of clients sockets
-std::mutex clientsMutex;  // mutex for client list
+std::vector<std::thread> clientThreads;
+std::mutex clientsMutex; // mutex for client list
 
 void broadcastMessage(std::string message, int clientSocket)
 {
@@ -34,20 +35,16 @@ void broadcastMessage(std::string message, int clientSocket)
 void handleClient(int clientSocket)
 {
     char messageBuffer[BUFFER_SIZE];
-
     std::string welcomeMessage = "Well, hello there!\n";
 
     // to client socket send welcome message
-    send(clientSocket, welcomeMessage.c_str(), welcomeMessage.length(), 0);
+    send(clientSocket, welcomeMessage.c_str(), static_cast<int>(welcomeMessage.length()), 0);
 
     while (isRunning)
     {
         int bytes_received = recv(clientSocket, messageBuffer, BUFFER_SIZE - 1, 0);
         if (bytes_received <= 0)
         {
-            int err = WSAGetLastError();
-            if (err == WSAETIMEDOUT)
-                continue; // timeout, check isRunning again
             break;
         }
         messageBuffer[bytes_received] = '\0';
@@ -67,10 +64,21 @@ void handleClient(int clientSocket)
         }
     }
     closesocket(clientSocket);
-    std::cout << "Client disconnected\n";
+    std::cout << "Client " << std::to_string(clientSocket) << " disconnected\n";
 }
 
-void listenForCommands()
+void closeAllClients()
+{
+    std::lock_guard<std::mutex> lock(clientsMutex);
+    for (int clientSocket : clients)
+    {
+        shutdown(clientSocket, SD_BOTH);
+        closesocket(clientSocket);
+    }
+    clients.clear();
+}
+
+void listenForCommands(int serverSocket)
 {
     std::string input;
     while (isRunning)
@@ -80,6 +88,10 @@ void listenForCommands()
         {
             std::cout << "Shutting down server..." << std::endl;
             isRunning = false;
+            broadcastMessage("SERVER: shutting down\n", PORT);
+            closesocket(serverSocket);
+            closeAllClients();
+
             break;
         }
     }
@@ -126,20 +138,25 @@ int main()
 
     std::cout << "Server started on port " << PORT << std::endl;
 
-    std::thread commandsThread(listenForCommands);
+    std::thread commandsThread(listenForCommands, serverSocket);
 
     while (isRunning)
     {
         sockaddr_in clientAddr{};
-        socklen_t clientSize = sizeof(clientAddr);
+        int clientSize = sizeof(clientAddr);
         int clientSocket = accept(serverSocket, (sockaddr *)&clientAddr, &clientSize);
+
         if (clientSocket == INVALID_SOCKET)
         {
+            if (!isRunning)
+            {
+                // Server is shutting down and socket closed -> break loop
+                break;
+            }
             std::cerr << "Accept failed: " << WSAGetLastError() << "\n";
-            DWORD timeout = 2000; // 2 seconds
-            setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
             continue;
         }
+
         std::cout << "New client connected: " << clientSocket << std::endl;
         {
             // lock client vector to eliminate race condition
@@ -149,26 +166,20 @@ int main()
             clients.push_back(clientSocket);
         }
 
-        // new thread for client
-        std::thread t(handleClient, clientSocket);
-        t.detach(); // detach thread to handle client independently of this loop
+        clientThreads.emplace_back(handleClient, clientSocket);
+    }
+
+    closeAllClients();
+
+    for (auto &t : clientThreads)
+    {
+        if (t.joinable())
+            t.join();
     }
 
     commandsThread.join();
-    std::cout << "Command thread finished. Closing all connections..." << std::endl;
-
-    {
-        std::lock_guard<std::mutex> lock(clientsMutex);
-        for (int clientSocket : clients)
-        {
-            shutdown(clientSocket, SD_BOTH);
-            closesocket(clientSocket);
-        }
-        clients.clear();
-    }
-
-    closesocket(serverSocket);
 
     WSACleanup();
+
     return 0;
 }
